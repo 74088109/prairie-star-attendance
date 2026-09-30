@@ -53,7 +53,7 @@ export async function GET(req) {
 
   if (action === 'meta') {
     const { rows } = await query("SELECT value FROM meta WHERE key = 'reason_presets'");
-    const reasonPresets = rows[0]?.value || ['Sick', 'Lame', 'Weather', 'Emergency', 'Other'];
+    const reasonPresets = rows[0]?.value || ['Sick', 'Lame', 'Weather', 'Emergency', 'Canceled by Katryna', 'Other'];
     return NextResponse.json({ reasonPresets });
   }
 
@@ -62,7 +62,9 @@ export async function GET(req) {
     if (!date) return bad('date is required');
     const { rows } = await query('SELECT * FROM attendance WHERE date = $1', [date]);
     const byStudent = {};
-    for (const r of rows) byStudent[r.student_id] = { status: r.status, reason: r.reason, note: r.note };
+    for (const r of rows) {
+      byStudent[r.student_id] = { status: r.status, reason: r.reason, note: r.note, rescheduled: r.rescheduled };
+    }
     return NextResponse.json(byStudent);
   }
 
@@ -125,12 +127,18 @@ export async function GET(req) {
           rec.noshow++;
           totalNoShow++;
           status = 'No-show';
-          rec.reasons.push({ date: iso, reason: att.reason || '(no reason given)', note: att.note || '' });
+          rec.reasons.push({
+            date: iso,
+            reason: att.reason || '(no reason given)',
+            rescheduled: att.rescheduled,
+            note: att.note || '',
+          });
         } else {
           rec.unmarked++;
           if (iso <= today) totalUnmarked++;
         }
-        logRows.push([iso, wd, it.time || '', s.name, s.horse || '', status, att?.reason || '', att?.note || '']);
+        const resched = att?.status === 'no-show' && att.rescheduled != null ? (att.rescheduled ? 'Yes' : 'No') : '';
+        logRows.push([iso, wd, it.time || '', s.name, s.horse || '', status, att?.reason || '', resched, att?.note || '']);
       }
     }
 
@@ -223,15 +231,24 @@ export async function POST(req) {
     }
 
     const { rows } = await query(
-      `INSERT INTO attendance (date, student_id, status, reason, note)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO attendance (date, student_id, status, reason, note, rescheduled)
+       VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (date, student_id)
-       DO UPDATE SET status = EXCLUDED.status, reason = EXCLUDED.reason, note = EXCLUDED.note
+       DO UPDATE SET status = EXCLUDED.status, reason = EXCLUDED.reason, note = EXCLUDED.note,
+                     rescheduled = EXCLUDED.rescheduled
        RETURNING *`,
-      [date, studentId, body.status, body.reason || null, body.note || null]
+      [
+        date,
+        studentId,
+        body.status,
+        body.reason || null,
+        body.note || null,
+        // Only a no-show can have a rescheduled answer; true / false / unanswered (null).
+        body.status === 'no-show' && typeof body.rescheduled === 'boolean' ? body.rescheduled : null,
+      ]
     );
     const r = rows[0];
-    return NextResponse.json({ status: r.status, reason: r.reason, note: r.note });
+    return NextResponse.json({ status: r.status, reason: r.reason, note: r.note, rescheduled: r.rescheduled });
   }
 
   if (action === 'extras') {
