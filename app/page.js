@@ -199,22 +199,42 @@ function TodayTab({ students, reasonPresets, refreshStudents }) {
   }
 
   function setPresent(studentId) {
-    saveAttendance(studentId, { status: 'present', reason: null, note: null });
+    saveAttendance(studentId, { status: 'present', reason: null, note: null, rescheduled: null });
   }
   function setNoShow(studentId) {
     const cur = attendance[studentId] || {};
-    saveAttendance(studentId, { status: 'no-show', reason: cur.reason || null, note: cur.note || null });
+    saveAttendance(studentId, {
+      status: 'no-show',
+      reason: cur.reason || null,
+      note: cur.note || null,
+      rescheduled: cur.rescheduled ?? null,
+    });
   }
   function clearStatus(studentId) {
-    saveAttendance(studentId, { status: null, reason: null, note: null });
+    saveAttendance(studentId, { status: null, reason: null, note: null, rescheduled: null });
   }
   function setReason(studentId, reason) {
     const cur = attendance[studentId] || {};
-    saveAttendance(studentId, { status: 'no-show', reason, note: cur.note || null });
+    saveAttendance(studentId, { status: 'no-show', reason, note: cur.note || null, rescheduled: cur.rescheduled ?? null });
   }
   function setNote(studentId, note) {
     const cur = attendance[studentId] || {};
-    saveAttendance(studentId, { status: cur.status || 'no-show', reason: cur.reason || null, note });
+    saveAttendance(studentId, {
+      status: cur.status || 'no-show',
+      reason: cur.reason || null,
+      note,
+      rescheduled: cur.rescheduled ?? null,
+    });
+  }
+  // Tap Yes or No; tapping the one that's already selected clears the answer.
+  function setRescheduled(studentId, value) {
+    const cur = attendance[studentId] || {};
+    saveAttendance(studentId, {
+      status: 'no-show',
+      reason: cur.reason || null,
+      note: cur.note || null,
+      rescheduled: cur.rescheduled === value ? null : value,
+    });
   }
 
   async function confirmAdd() {
@@ -335,6 +355,23 @@ function TodayTab({ students, reasonPresets, refreshStudents }) {
                             {r}
                           </button>
                         ))}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-soft)' }}>Rescheduled?</span>
+                        <div className="seg">
+                          <button
+                            className={'present' + (att.rescheduled === true ? ' on' : '')}
+                            onClick={() => setRescheduled(it.studentId, true)}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            className={'noshow' + (att.rescheduled === false ? ' on' : '')}
+                            onClick={() => setRescheduled(it.studentId, false)}
+                          >
+                            No
+                          </button>
+                        </div>
                       </div>
                       <input
                         type="text"
@@ -636,7 +673,7 @@ function MonthlyTab() {
     for (const r of data.summary) {
       summaryRows.push([r.name, r.scheduled, r.present, r.noshow, r.unmarked]);
     }
-    const logRows = [['Date', 'Day', 'Time', 'Student', 'Horse', 'Status', 'Reason', 'Note'], ...data.logRows];
+    const logRows = [['Date', 'Day', 'Time', 'Student', 'Horse', 'Status', 'Reason', 'Rescheduled', 'Note'], ...data.logRows];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Monthly Summary');
@@ -732,6 +769,7 @@ function MonthlyTab() {
                           <th>Date</th>
                           <th>Student</th>
                           <th>Reason</th>
+                          <th>Resched.</th>
                           <th>Note</th>
                         </tr>
                       </thead>
@@ -741,6 +779,7 @@ function MonthlyTab() {
                             <td className="num">{x.date}</td>
                             <td>{x.name}</td>
                             <td className="noshowreason">{x.reason}</td>
+                            <td>{x.rescheduled == null ? '' : x.rescheduled ? 'Yes' : 'No'}</td>
                             <td>{x.note}</td>
                           </tr>
                         ))}
@@ -767,7 +806,7 @@ function AppInner() {
   const router = useRouter();
   const [tab, setTab] = useState('today');
   const [students, setStudents] = useState([]);
-  const [reasonPresets, setReasonPresets] = useState(['Sick', 'Lame', 'Weather', 'Emergency', 'Other']);
+  const [reasonPresets, setReasonPresets] = useState(['Sick', 'Lame', 'Weather', 'Emergency', 'Canceled by Katryna', 'Other']);
   const [ready, setReady] = useState(false);
 
   const refreshStudents = useCallback(async () => {
